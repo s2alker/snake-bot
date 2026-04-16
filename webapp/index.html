@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>Snake</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #1a1a2e;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: 'Segoe UI', sans-serif;
+      color: #eee;
+      overflow: hidden;
+    }
+
+    #score-panel {
+      display: flex;
+      gap: 32px;
+      margin-bottom: 12px;
+      font-size: 18px;
+    }
+
+    #score-panel span { color: #a8d8ea; }
+    #score-panel b { color: #fff; }
+
+    #canvas-wrap {
+      position: relative;
+    }
+
+    canvas {
+      display: block;
+      border-radius: 12px;
+      border: 2px solid #16213e;
+      box-shadow: 0 0 30px rgba(72, 202, 228, 0.3);
+    }
+
+    #overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(26, 26, 46, 0.88);
+      border-radius: 10px;
+      gap: 16px;
+    }
+
+    #overlay h2 { font-size: 28px; color: #48cae4; }
+    #overlay p  { font-size: 16px; color: #aaa; }
+
+    #overlay button {
+      margin-top: 8px;
+      padding: 12px 36px;
+      font-size: 18px;
+      border: none;
+      border-radius: 8px;
+      background: #48cae4;
+      color: #1a1a2e;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    #overlay button:hover { background: #90e0ef; }
+
+    /* D-pad */
+    #dpad {
+      margin-top: 18px;
+      display: grid;
+      grid-template-areas:
+        ". up ."
+        "left . right"
+        ". down .";
+      gap: 6px;
+    }
+
+    #dpad button {
+      width: 54px;
+      height: 54px;
+      border: none;
+      border-radius: 10px;
+      background: #16213e;
+      color: #48cae4;
+      font-size: 22px;
+      cursor: pointer;
+      transition: background .15s;
+      -webkit-tap-highlight-color: transparent;
+      touch-action: manipulation;
+    }
+    #dpad button:active { background: #0f3460; }
+    #btn-up    { grid-area: up; }
+    #btn-left  { grid-area: left; }
+    #btn-right { grid-area: right; }
+    #btn-down  { grid-area: down; }
+  </style>
+</head>
+<body>
+
+<div id="score-panel">
+  <div><span>Счёт: </span><b id="cur-score">0</b></div>
+  <div><span>Рекорд: </span><b id="hi-score">0</b></div>
+</div>
+
+<div id="canvas-wrap">
+  <canvas id="canvas"></canvas>
+  <div id="overlay">
+    <h2>🐍 Змейка</h2>
+    <p>Свайп, стрелки или D-pad</p>
+    <button id="start-btn">Начать</button>
+  </div>
+</div>
+
+<div id="dpad">
+  <button id="btn-up">▲</button>
+  <button id="btn-left">◀</button>
+  <button id="btn-right">▶</button>
+  <button id="btn-down">▼</button>
+</div>
+
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script>
+(() => {
+  const tg = window.Telegram?.WebApp;
+  if (tg) { tg.ready(); tg.expand(); }
+
+  const CELL = 20;
+  const COLS = 20;
+  const ROWS = 20;
+  const SIZE = CELL * COLS;  // 400
+
+  const canvas = document.getElementById('canvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = SIZE;
+  canvas.height = SIZE;
+
+  const overlay   = document.getElementById('overlay');
+  const startBtn  = document.getElementById('start-btn');
+  const curScoreEl = document.getElementById('cur-score');
+  const hiScoreEl  = document.getElementById('hi-score');
+
+  let snake, dir, nextDir, food, score, hiScore, loopId, running;
+
+  hiScore = parseInt(localStorage.getItem('snakeHi') || '0');
+  hiScoreEl.textContent = hiScore;
+
+  function init() {
+    snake   = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+    dir     = { x: 1, y: 0 };
+    nextDir = { x: 1, y: 0 };
+    score   = 0;
+    curScoreEl.textContent = 0;
+    placeFood();
+  }
+
+  function placeFood() {
+    let pos;
+    do {
+      pos = { x: Math.floor(Math.random() * COLS), y: Math.floor(Math.random() * ROWS) };
+    } while (snake.some(s => s.x === pos.x && s.y === pos.y));
+    food = pos;
+  }
+
+  function step() {
+    dir = nextDir;
+    const head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    // стены
+    if (head.x < 0 || head.x >= COLS || head.y < 0 || head.y >= ROWS) return gameOver();
+    // сам себя
+    if (snake.some(s => s.x === head.x && s.y === head.y)) return gameOver();
+
+    snake.unshift(head);
+
+    if (head.x === food.x && head.y === food.y) {
+      score++;
+      curScoreEl.textContent = score;
+      if (score > hiScore) {
+        hiScore = score;
+        hiScoreEl.textContent = hiScore;
+        localStorage.setItem('snakeHi', hiScore);
+      }
+      placeFood();
+    } else {
+      snake.pop();
+    }
+
+    draw();
+  }
+
+  function draw() {
+    // фон сетки
+    for (let r = 0; r < ROWS; r++) {
+      for (let c = 0; c < COLS; c++) {
+        ctx.fillStyle = (r + c) % 2 === 0 ? '#16213e' : '#1a2744';
+        ctx.fillRect(c * CELL, r * CELL, CELL, CELL);
+      }
+    }
+
+    // еда
+    ctx.fillStyle = '#f72585';
+    ctx.beginPath();
+    ctx.arc(food.x * CELL + CELL / 2, food.y * CELL + CELL / 2, CELL / 2 - 2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // змейка
+    snake.forEach((s, i) => {
+      const t = i / snake.length;
+      ctx.fillStyle = i === 0
+        ? '#48cae4'
+        : `hsl(${190 + t * 40}, 70%, ${55 - t * 20}%)`;
+      roundRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2, 4);
+    });
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function gameOver() {
+    clearInterval(loopId);
+    running = false;
+
+    if (tg) {
+      tg.HapticFeedback?.notificationOccurred('error');
+      // отправить счёт боту
+      tg.sendData(JSON.stringify({ action: 'game_over', score }));
+    }
+
+    overlay.innerHTML = `
+      <h2>Конец игры</h2>
+      <p>Очки: <b style="color:#48cae4">${score}</b> · Рекорд: <b style="color:#f72585">${hiScore}</b></p>
+      <button id="start-btn">Ещё раз</button>`;
+    overlay.style.display = 'flex';
+    document.getElementById('start-btn').addEventListener('click', startGame);
+  }
+
+  function startGame() {
+    overlay.style.display = 'none';
+    init();
+    running = true;
+    clearInterval(loopId);
+    loopId = setInterval(step, 130);
+    draw();
+  }
+
+  // --- управление клавиатурой ---
+  const KEYS = {
+    ArrowUp:    { x: 0, y: -1 }, w: { x: 0, y: -1 },
+    ArrowDown:  { x: 0, y:  1 }, s: { x: 0, y:  1 },
+    ArrowLeft:  { x: -1, y: 0 }, a: { x: -1, y: 0 },
+    ArrowRight: { x:  1, y: 0 }, d: { x:  1, y: 0 },
+  };
+
+  function tryDir(d) {
+    if (!running) return;
+    if (d.x === -dir.x && d.y === -dir.y) return; // нельзя назад
+    nextDir = d;
+  }
+
+  document.addEventListener('keydown', e => {
+    const d = KEYS[e.key];
+    if (d) { e.preventDefault(); tryDir(d); }
+  });
+
+  // --- D-pad ---
+  document.getElementById('btn-up').addEventListener('click',    () => tryDir({ x: 0, y: -1 }));
+  document.getElementById('btn-down').addEventListener('click',  () => tryDir({ x: 0, y:  1 }));
+  document.getElementById('btn-left').addEventListener('click',  () => tryDir({ x: -1, y: 0 }));
+  document.getElementById('btn-right').addEventListener('click', () => tryDir({ x:  1, y: 0 }));
+
+  // --- свайп ---
+  let tx0, ty0;
+  canvas.addEventListener('touchstart', e => {
+    tx0 = e.touches[0].clientX;
+    ty0 = e.touches[0].clientY;
+  }, { passive: true });
+  canvas.addEventListener('touchend', e => {
+    const dx = e.changedTouches[0].clientX - tx0;
+    const dy = e.changedTouches[0].clientY - ty0;
+    if (Math.abs(dx) > Math.abs(dy)) tryDir({ x: dx > 0 ? 1 : -1, y: 0 });
+    else                              tryDir({ x: 0, y: dy > 0 ? 1 : -1 });
+  }, { passive: true });
+
+  // первый старт
+  startBtn.addEventListener('click', startGame);
+
+  // нарисовать пустое поле
+  init(); draw();
+})();
+</script>
+</body>
+</html>
