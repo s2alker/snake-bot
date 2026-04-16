@@ -202,6 +202,17 @@
       }
     }
 
+    // watermark
+    ctx.save();
+    ctx.translate(SIZE / 2, SIZE / 2);
+    ctx.rotate(-Math.PI / 6);
+    ctx.font = 'bold 52px Segoe UI, sans-serif';
+    ctx.fillStyle = 'rgba(255,255,255,0.055)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('SnowRiders', 0, 0);
+    ctx.restore();
+
     // еда
     ctx.fillStyle = '#f72585';
     ctx.beginPath();
